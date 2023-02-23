@@ -37,8 +37,8 @@ class GUI(tk.Frame):
         if tkMessageBox.askokcancel("Quit", "Do you really want to quit?"):
             tk.Frame.quit(self)
 
-    def draw_rect(self, x, y, width, height):
-        self.canvas.create_rectangle(x, y, x + width, y + height, fill="black")
+    def draw_rect(self, x, y, width, height, fill="white"):
+        self.canvas.create_rectangle(x, y, x + width, y + height, fill=fill)
 
     def stretch_pixel_array_to_canvas(self, pixel_array):
         # print(len(pixel_array), len(pixel_array[0]))
@@ -47,6 +47,8 @@ class GUI(tk.Frame):
                 # print(y, x)
                 if pixel_array[y][x] == 1:
                     self.draw_rect(x * 10, y * 10, 10, 10)
+                else:
+                    self.draw_rect(x * 10, y * 10, 10, 10, fill="black")
 
     def update_canvas(self, display):
         self.stretch_pixel_array_to_canvas(display)
