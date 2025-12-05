@@ -72,41 +72,42 @@ jobs:
           ARCHIVE_SUFFIX: ${{ matrix.archive_suffix }}
         run: |
           python - <<'PY'
-import os
-import shutil
-import pathlib
-
-app_name = os.environ["APP_NAME"]
-binary_ext = os.environ["BINARY_EXTENSION"]
-archive_suffix = os.environ["ARCHIVE_SUFFIX"]
-ref_name = os.environ.get("GITHUB_REF_NAME", "build")
-
-binary_path = pathlib.Path("dist") / f"{app_name}{binary_ext}"
-if not binary_path.exists():
-    raise SystemExit(f"Binary {binary_path} not found")
-
-bundle_root = pathlib.Path("bundle")
-bundle_root.mkdir(parents=True, exist_ok=True)
-package_dir = bundle_root / "Chip8Emulator"
-if package_dir.exists():
-    shutil.rmtree(package_dir)
-package_dir.mkdir()
-
-shutil.copy2(binary_path, package_dir / binary_path.name)
-for filename in ("README.md", "CONTROLS.md"):
-    path = pathlib.Path(filename)
-    if path.exists():
-        shutil.copy2(path, package_dir / path.name)
-rom_source = pathlib.Path("ROMs")
-if rom_source.exists():
-    shutil.copytree(rom_source, package_dir / "ROMs")
-
-archive_dir = pathlib.Path("release-artifacts")
-archive_dir.mkdir(parents=True, exist_ok=True)
-archive_name = f"chip8emulator-{archive_suffix}-{ref_name}"
-shutil.make_archive(str(archive_dir / archive_name), "zip", root_dir=bundle_root, base_dir="Chip8Emulator")
-print(f"Created {archive_name}.zip")
-PY
+          import os
+          import shutil
+          import pathlib
+          
+          app_name = os.environ["APP_NAME"]
+          binary_ext = os.environ["BINARY_EXTENSION"]
+          archive_suffix = os.environ["ARCHIVE_SUFFIX"]
+          ref_name = os.environ.get("GITHUB_REF_NAME", "build")
+          
+          binary_path = pathlib.Path("dist") / f"{app_name}{binary_ext}"
+          if not binary_path.exists():
+              raise SystemExit(f"Binary {binary_path} not found")
+          
+          bundle_root = pathlib.Path("bundle")
+          bundle_root.mkdir(parents=True, exist_ok=True)
+          package_dir = bundle_root / "Chip8Emulator"
+          if package_dir.exists():
+              shutil.rmtree(package_dir)
+          package_dir.mkdir()
+          
+          shutil.copy2(binary_path, package_dir / binary_path.name)
+          for filename in ("README.md", "CONTROLS.md"):
+              path = pathlib.Path(filename)
+              if path.exists():
+                  shutil.copy2(path, package_dir / path.name)
+          rom_source = pathlib.Path("ROMs")
+          if rom_source.exists():
+              shutil.copytree(rom_source, package_dir / "ROMs")
+          
+          archive_dir = pathlib.Path("release-artifacts")
+          archive_dir.mkdir(parents=True, exist_ok=True)
+          archive_name = f"chip8emulator-{archive_suffix}-{ref_name}"
+          shutil.make_archive(str(archive_dir / archive_name), "zip", root_dir=bundle_root, base_dir="Chip8Emulator")
+          print(f"Created {archive_name}.zip")
+          
+          PY
 
       - name: Upload OS artifact
         uses: actions/upload-artifact@v4
