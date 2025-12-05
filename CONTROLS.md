@@ -24,3 +24,8 @@ This emulator maps the keypad onto a QWERTY keyboard:
 - `2/4/6/8` (`2`, `Q`, `E`, `S`) often act as up/left/right/down.
 - Corner buttons (`1/4/7` or `3/6/9`) become secondary actions in some ROMs.
 - Open `Help → Chip-8 Controls` in the app at any time to pop up this layout while playing.
+
+### Remapping Controls
+
+- Choose `Controls → Remap Keys...` to open the live key editor. Click a Chip-8 key, press the keyboard key you want, and the change applies immediately.
+- Use `Controls → Restore Default Keys` (or the button inside the editor) to revert to the original QWERTY layout whenever you like.

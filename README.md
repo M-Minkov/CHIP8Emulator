@@ -9,6 +9,7 @@ Modernized Python implementation of a classic Chip-8 interpreter. The project is
 - Keyboard bridge that maps a standard QWERTY layout onto the Chip-8 hex keypad
 - Canvas-based renderer with dynamic scaling and instant ROM reloads
 - Bundled ROM library menu grouped into Games, Demos, and Other for one-click loading plus a manual file picker
+- Fully customizable keypad remapping with instant restore-to-default controls
 
 ## Requirements
 
@@ -26,7 +27,7 @@ Pick any included title directly from `Library → Games|Demos|Other`, or choose
 
 ## Controls
 
-See `CONTROLS.md` (or `Help → Chip-8 Controls` in the app) for the full keypad diagram, keyboard mapping, and quick-play tips.
+See `CONTROLS.md` (or `Help → Chip-8 Controls` in the app) for the full keypad diagram, keyboard mapping, and quick-play tips. Use `Controls → Remap Keys...` to assign your preferred layout at runtime, and `Controls → Restore Default Keys` if you want to snap back to the original scheme.
 
 ## Architecture
 

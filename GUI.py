@@ -3,7 +3,14 @@ import tkinter.filedialog as tkFileDialog
 import tkinter.messagebox as tkMessageBox
 from pathlib import Path
 
-KEY_MAPPING = {
+CHIP8_KEY_GRID = [
+    ["1", "2", "3", "C"],
+    ["4", "5", "6", "D"],
+    ["7", "8", "9", "E"],
+    ["A", "0", "B", "F"],
+]
+
+DEFAULT_KEY_MAPPING = {
     "1": 0x1,
     "2": 0x2,
     "3": 0x3,
@@ -38,6 +45,13 @@ class GUI(tk.Frame):
         self.menu = None
         self.library_menu = None
         self.help_menu = None
+        self.controls_menu = None
+        self.controls_window = None
+        self.key_mapping = DEFAULT_KEY_MAPPING.copy()
+        self.keymap_window = None
+        self.keymap_instruction = None
+        self.keymap_buttons = {}
+        self.pending_chip_key = None
         self.master.title("Chip-8 Emulator")
         self.pack()
         self.createWidgets()
@@ -59,6 +73,10 @@ class GUI(tk.Frame):
         self.menu.add_cascade(label="File", menu=file_menu)
         self.library_menu = tk.Menu(self.menu, tearoff=0)
         self.menu.add_cascade(label="Library", menu=self.library_menu)
+        self.controls_menu = tk.Menu(self.menu, tearoff=0)
+        self.controls_menu.add_command(label="Remap Keys...", command=self.open_keymap_editor)
+        self.controls_menu.add_command(label="Restore Default Keys", command=self.reset_key_mapping)
+        self.menu.add_cascade(label="Controls", menu=self.controls_menu)
         self.help_menu = tk.Menu(self.menu, tearoff=0)
         self.help_menu.add_command(label="Chip-8 Controls", command=self.show_controls_help)
         self.menu.add_cascade(label="Help", menu=self.help_menu)
@@ -174,33 +192,149 @@ class GUI(tk.Frame):
         except Exception as exc:
             tkMessageBox.showerror("ROM Load Failed", str(exc))
 
-    def show_controls_help(self):
-        lines = [
-            "Chip-8 keypad (hex layout):",
-            " 1  2  3  C",
-            " 4  5  6  D",
-            " 7  8  9  E",
-            " A  0  B  F",
-            "",
-            "Mapped to your keyboard:",
-            " 1  2  3  4",
-            " Q  W  E  R",
-            " A  S  D  F",
-            " Z  X  C  V",
+    def open_keymap_editor(self):
+        if self.keymap_window and tk.Toplevel.winfo_exists(self.keymap_window):
+            self.keymap_window.lift()
+            return
+        window = tk.Toplevel(self.master)
+        window.title("Remap Chip-8 Keys")
+        window.resizable(False, False)
+        window.bind("<KeyPress>", self.handle_keymap_keypress)
+        window.protocol("WM_DELETE_WINDOW", self.close_keymap_window)
+        self.keymap_window = window
+        instruction = tk.Label(window, text="Select a Chip-8 key, then press the keyboard key you want to assign.")
+        instruction.pack(padx=12, pady=(12, 6))
+        self.keymap_instruction = instruction
+        grid = tk.Frame(window)
+        grid.pack(padx=12, pady=6)
+        self.keymap_buttons = {}
+        for row_index, row in enumerate(CHIP8_KEY_GRID):
+            for col_index, chip_char in enumerate(row):
+                label = tk.Label(grid, text=chip_char, width=3, anchor="e")
+                label.grid(row=row_index, column=col_index * 2, padx=2, pady=2)
+                button = tk.Button(grid, width=6, text=self.get_keyboard_label(chip_char), command=lambda c=chip_char: self.begin_key_capture(c))
+                button.grid(row=row_index, column=(col_index * 2) + 1, padx=2, pady=2)
+                self.keymap_buttons[chip_char] = button
+        action_frame = tk.Frame(window)
+        action_frame.pack(fill="x", padx=12, pady=(6, 12))
+        tk.Button(action_frame, text="Restore Defaults", command=self.reset_key_mapping).pack(side="left")
+        tk.Button(action_frame, text="Close", command=self.close_keymap_window).pack(side="right")
+        self.pending_chip_key = None
+        window.focus_set()
+
+    def begin_key_capture(self, chip_char):
+        self.pending_chip_key = chip_char
+        if self.keymap_instruction:
+            self.keymap_instruction.config(text=f"Press a keyboard key to map Chip-8 {chip_char}.")
+        if self.keymap_window:
+            self.keymap_window.focus_set()
+
+    def handle_keymap_keypress(self, event):
+        if not self.pending_chip_key:
+            return
+        key = event.keysym.lower()
+        if len(key) != 1:
+            if self.keymap_instruction:
+                self.keymap_instruction.config(text="Please press a single letter or number key.")
+            return
+        self.assign_keyboard_to_chip(key, self.pending_chip_key)
+        self.update_keymap_button(self.pending_chip_key)
+        self.pending_chip_key = None
+        if self.keymap_instruction:
+            self.keymap_instruction.config(text="Select a Chip-8 key, then press the keyboard key you want to assign.")
+
+    def assign_keyboard_to_chip(self, keyboard_key, chip_char):
+        nibble = int(chip_char, 16)
+        duplicates = [key for key, value in self.key_mapping.items() if value == nibble]
+        for dup in duplicates:
+            del self.key_mapping[dup]
+        if keyboard_key in self.key_mapping:
+            del self.key_mapping[keyboard_key]
+        self.key_mapping[keyboard_key] = nibble
+
+    def update_keymap_button(self, chip_char):
+        if chip_char in self.keymap_buttons:
+            self.keymap_buttons[chip_char].config(text=self.get_keyboard_label(chip_char))
+
+    def refresh_keymap_buttons(self):
+        if not self.keymap_buttons:
+            return
+        for chip_char in self.keymap_buttons:
+            self.update_keymap_button(chip_char)
+
+    def close_keymap_window(self):
+        if self.keymap_window and tk.Toplevel.winfo_exists(self.keymap_window):
+            self.keymap_window.destroy()
+        self.keymap_window = None
+        self.keymap_instruction = None
+        self.keymap_buttons = {}
+        self.pending_chip_key = None
+
+    def reset_key_mapping(self):
+        self.key_mapping = DEFAULT_KEY_MAPPING.copy()
+        self.pending_chip_key = None
+        if self.keymap_instruction:
+            self.keymap_instruction.config(text="Select a Chip-8 key, then press the keyboard key you want to assign.")
+        self.refresh_keymap_buttons()
+        if self.keymap_window:
+            self.keymap_window.focus_set()
+
+    def find_keyboard_key_for_chip(self, chip_char):
+        nibble = int(chip_char, 16)
+        for key, value in self.key_mapping.items():
+            if value == nibble:
+                return key
+        return ""
+
+    def get_keyboard_label(self, chip_char):
+        key = self.find_keyboard_key_for_chip(chip_char)
+        return key.upper() if key else "--"
+
+    def build_controls_text(self):
+        lines = ["Chip-8 keypad (hex layout):"]
+        for row in CHIP8_KEY_GRID:
+            lines.append(" " + "  ".join(row))
+        lines.append("")
+        lines.append("Mapped to your keyboard:")
+        for row in CHIP8_KEY_GRID:
+            labels = [self.get_keyboard_label(ch).rjust(2) for ch in row]
+            lines.append(" " + "  ".join(labels))
+        lines.extend([
             "",
             "Most games use 5 as Start/Fire,",
             " arrow-like movement on 2/4/6/8,",
-            " and 1/4/7 for extra actions."
-        ]
-        message = "\n".join(lines)
-        tkMessageBox.showinfo("Chip-8 Controls", message)
+            " and 1/4/7 for extra actions.",
+        ])
+        return "\n".join(lines)
+
+    def show_controls_help(self):
+        if self.controls_window and tk.Toplevel.winfo_exists(self.controls_window):
+            self.controls_window.lift()
+            return
+        message = self.build_controls_text()
+        window = tk.Toplevel(self.master)
+        window.title("Chip-8 Controls")
+        window.resizable(False, False)
+        tk.Label(window, text=message, justify="left", font=("Courier New", 11)).pack(padx=12, pady=12)
+        tk.Button(window, text="Close", command=self.close_controls_window).pack(pady=(0, 12))
+        window.protocol("WM_DELETE_WINDOW", self.close_controls_window)
+        self.controls_window = window
+
+    def close_controls_window(self):
+        if self.controls_window and tk.Toplevel.winfo_exists(self.controls_window):
+            self.controls_window.destroy()
+        self.controls_window = None
 
     def handle_key_press(self, event):
+        if self.pending_chip_key is not None:
+            return
         key = event.keysym.lower()
-        if key in KEY_MAPPING:
-            self.chip8.set_key_state(KEY_MAPPING[key], True)
+        mapped = self.key_mapping.get(key)
+        if mapped is not None:
+            self.chip8.set_key_state(mapped, True)
 
     def handle_key_release(self, event):
         key = event.keysym.lower()
-        if key in KEY_MAPPING:
-            self.chip8.set_key_state(KEY_MAPPING[key], False)
+        mapped = self.key_mapping.get(key)
+        if mapped is not None:
+            self.chip8.set_key_state(mapped, False)
