@@ -1,0 +1,154 @@
+name: Publish CHIP-8 Binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "V*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            data_separator: ":"
+            binary_extension: ""
+            archive_suffix: linux
+          - os: macos-latest
+            data_separator: ":"
+            binary_extension: ""
+            archive_suffix: macos
+          - os: windows-latest
+            data_separator: ";"
+            binary_extension: ".exe"
+            archive_suffix: windows
+    env:
+      APP_NAME: chip8-emulator
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Tk dependency (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install project requirements
+        run: |
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          fi
+
+      - name: Install PyInstaller
+        run: python -m pip install pyinstaller
+
+      - name: Build executable with PyInstaller
+        run: >-
+          pyinstaller main.py --noconfirm --onefile
+          --name "${APP_NAME}"
+          --add-data "ROMs${{ matrix.data_separator }}ROMs"
+
+      - name: Assemble distributable archive
+        env:
+          BINARY_EXTENSION: ${{ matrix.binary_extension }}
+          ARCHIVE_SUFFIX: ${{ matrix.archive_suffix }}
+        run: |
+          python - <<'PY'
+import os
+import shutil
+import pathlib
+
+app_name = os.environ["APP_NAME"]
+binary_ext = os.environ["BINARY_EXTENSION"]
+archive_suffix = os.environ["ARCHIVE_SUFFIX"]
+ref_name = os.environ.get("GITHUB_REF_NAME", "build")
+
+binary_path = pathlib.Path("dist") / f"{app_name}{binary_ext}"
+if not binary_path.exists():
+    raise SystemExit(f"Binary {binary_path} not found")
+
+bundle_root = pathlib.Path("bundle")
+bundle_root.mkdir(parents=True, exist_ok=True)
+package_dir = bundle_root / "Chip8Emulator"
+if package_dir.exists():
+    shutil.rmtree(package_dir)
+package_dir.mkdir()
+
+shutil.copy2(binary_path, package_dir / binary_path.name)
+for filename in ("README.md", "CONTROLS.md"):
+    path = pathlib.Path(filename)
+    if path.exists():
+        shutil.copy2(path, package_dir / path.name)
+rom_source = pathlib.Path("ROMs")
+if rom_source.exists():
+    shutil.copytree(rom_source, package_dir / "ROMs")
+
+archive_dir = pathlib.Path("release-artifacts")
+archive_dir.mkdir(parents=True, exist_ok=True)
+archive_name = f"chip8emulator-{archive_suffix}-{ref_name}"
+shutil.make_archive(str(archive_dir / archive_name), "zip", root_dir=bundle_root, base_dir="Chip8Emulator")
+print(f"Created {archive_name}.zip")
+PY
+
+      - name: Upload OS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chip8-${{ matrix.archive_suffix }}
+          path: release-artifacts/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release assets
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_uploads
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG_NAME="${GITHUB_REF_NAME}"
+          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release create "$TAG_NAME" --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"
+          fi
+
+      - name: Upload binaries to Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG_NAME="${GITHUB_REF_NAME}"
+          shopt -s nullglob
+          files=(release_uploads/*/*.zip)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No artifacts found to upload" >&2
+            exit 1
+          fi
+          for asset in "${files[@]}"; do
+            gh release upload "$TAG_NAME" "$asset" --clobber
+          done
