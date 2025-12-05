@@ -13,7 +13,7 @@ Modernized Python implementation of a classic Chip-8 interpreter. The project is
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.13+
 - Tkinter (bundled with most desktop Python distributions)
 
 ## Running The Emulator
