@@ -40,37 +40,38 @@ jobs:
         env:
           BUMP_TYPE: ${{ github.event.inputs.version_bump || 'patch' }}
         run: |
-          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Latest tag: $latest_tag"
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           
-          version="${latest_tag#v}"
-          IFS='.' read -r major minor patch <<< "$version"
+          if [ -z "$latest_tag" ]; then
+            # No existing tags, start at v1.0.0
+            new_tag="v1.0.0"
+            changelog="Initial release"
+          else
+            echo "Latest tag: $latest_tag"
+            version="${latest_tag#v}"
+            IFS='.' read -r major minor patch <<< "$version"
+            
+            case "$BUMP_TYPE" in
+              major)
+                major=$((major + 1))
+                minor=0
+                patch=0
+                ;;
+              minor)
+                minor=$((minor + 1))
+                patch=0
+                ;;
+              patch)
+                patch=$((patch + 1))
+                ;;
+            esac
+            
+            new_tag="v${major}.${minor}.${patch}"
+            changelog=$(git log --pretty=format:"- %s" ${latest_tag}..HEAD 2>/dev/null || echo "Bug fixes and improvements")
+          fi
           
-          case "$BUMP_TYPE" in
-            major)
-              major=$((major + 1))
-              minor=0
-              patch=0
-              ;;
-            minor)
-              minor=$((minor + 1))
-              patch=0
-              ;;
-            patch)
-              patch=$((patch + 1))
-              ;;
-          esac
-          
-          new_tag="v${major}.${minor}.${patch}"
           echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
           echo "New version: $new_tag"
-          
-          # Generate changelog
-          if [ "$latest_tag" != "v0.0.0" ]; then
-            changelog=$(git log --pretty=format:"- %s" ${latest_tag}..HEAD 2>/dev/null || echo "- Initial release")
-          else
-            changelog=$(git log --pretty=format:"- %s" 2>/dev/null | head -20 || echo "- Initial release")
-          fi
           
           # Handle multiline for GitHub Actions
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
@@ -214,26 +215,18 @@ jobs:
           git tag "$TAG_NAME"
           git push origin "refs/tags/$TAG_NAME"
           
-          # Create the release with nice formatting
+          # Create the release
           gh release create "$TAG_NAME" \
-            --title "🎮 CHIP-8 Emulator $TAG_NAME" \
-            --notes "## What's New
+            --title "CHIP-8 Emulator $TAG_NAME" \
+            --notes "### Changes
 
           $CHANGELOG
 
-          ## Downloads
+          ### Downloads
 
-          | Platform | File |
-          |----------|------|
-          | 🪟 Windows | \`chip8emulator-${TAG_NAME}-windows.zip\` |
-          | 🍎 macOS | \`chip8emulator-${TAG_NAME}-macos.zip\` |
-          | 🐧 Linux | \`chip8emulator-${TAG_NAME}-linux.zip\` |
-
-          ## Installation
-
-          1. Download the archive for your platform
-          2. Extract the zip file
-          3. Run \`chip8-emulator\` (or \`chip8-emulator.exe\` on Windows)
+          - **Windows:** chip8emulator-${TAG_NAME}-windows.zip
+          - **macOS:** chip8emulator-${TAG_NAME}-macos.zip
+          - **Linux:** chip8emulator-${TAG_NAME}-linux.zip
 
           See [CONTROLS.md](https://github.com/${{ github.repository }}/blob/master/CONTROLS.md) for keyboard mappings."
 
