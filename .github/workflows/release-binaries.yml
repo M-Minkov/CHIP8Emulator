@@ -24,7 +24,7 @@ jobs:
           - os: ubuntu-latest
             data_separator: ":"
             binary_extension: ""
-            archive_suffix: linux
+            archive_suffix: ubuntu
           - os: macos-latest
             data_separator: ":"
             binary_extension: ""
@@ -42,7 +42,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install Tk dependency (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -103,7 +103,7 @@ jobs:
           
           archive_dir = pathlib.Path("release-artifacts")
           archive_dir.mkdir(parents=True, exist_ok=True)
-          archive_name = f"chip8emulator-{archive_suffix}-{ref_name}"
+          archive_name = f"chip8emulator-{ref_name}-{archive_suffix}"
           shutil.make_archive(str(archive_dir / archive_name), "zip", root_dir=bundle_root, base_dir="Chip8Emulator")
           print(f"Created {archive_name}.zip")
           
