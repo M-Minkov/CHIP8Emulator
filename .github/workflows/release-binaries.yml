@@ -2,17 +2,85 @@ name: Publish CHIP-8 Binaries
 
 on:
   push:
-    tags:
-      - "v*"
-      - "V*"
+    branches:
+      - master
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
   workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
 
 jobs:
+  version:
+    name: Determine version
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.version.outputs.new_tag }}
+      changelog: ${{ steps.version.outputs.changelog }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate new version
+        id: version
+        env:
+          BUMP_TYPE: ${{ github.event.inputs.version_bump || 'patch' }}
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+          
+          version="${latest_tag#v}"
+          IFS='.' read -r major minor patch <<< "$version"
+          
+          case "$BUMP_TYPE" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+          esac
+          
+          new_tag="v${major}.${minor}.${patch}"
+          echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
+          echo "New version: $new_tag"
+          
+          # Generate changelog
+          if [ "$latest_tag" != "v0.0.0" ]; then
+            changelog=$(git log --pretty=format:"- %s" ${latest_tag}..HEAD 2>/dev/null || echo "- Initial release")
+          else
+            changelog=$(git log --pretty=format:"- %s" 2>/dev/null | head -20 || echo "- Initial release")
+          fi
+          
+          # Handle multiline for GitHub Actions
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "changelog<<$EOF" >> $GITHUB_OUTPUT
+          echo "$changelog" >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
+
   build:
     name: Build on ${{ matrix.os }}
+    needs: version
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -24,7 +92,7 @@ jobs:
           - os: ubuntu-latest
             data_separator: ":"
             binary_extension: ""
-            archive_suffix: ubuntu
+            archive_suffix: linux
           - os: macos-latest
             data_separator: ":"
             binary_extension: ""
@@ -35,6 +103,7 @@ jobs:
             archive_suffix: windows
     env:
       APP_NAME: chip8-emulator
+      VERSION: ${{ needs.version.outputs.new_tag }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -62,7 +131,7 @@ jobs:
 
       - name: Build executable with PyInstaller
         run: >-
-          pyinstaller main.py --noconfirm --onefile
+          pyinstaller main.py --noconfirm --onefile --windowed
           --name "${APP_NAME}"
           --add-data "ROMs${{ matrix.data_separator }}ROMs"
 
@@ -79,7 +148,7 @@ jobs:
           app_name = os.environ["APP_NAME"]
           binary_ext = os.environ["BINARY_EXTENSION"]
           archive_suffix = os.environ["ARCHIVE_SUFFIX"]
-          ref_name = os.environ.get("GITHUB_REF_NAME", "build")
+          version = os.environ.get("VERSION", "build")
           
           binary_path = pathlib.Path("dist") / f"{app_name}{binary_ext}"
           if not binary_path.exists():
@@ -103,7 +172,7 @@ jobs:
           
           archive_dir = pathlib.Path("release-artifacts")
           archive_dir.mkdir(parents=True, exist_ok=True)
-          archive_name = f"chip8emulator-{ref_name}-{archive_suffix}"
+          archive_name = f"chip8emulator-{version}-{archive_suffix}"
           shutil.make_archive(str(archive_dir / archive_name), "zip", root_dir=bundle_root, base_dir="Chip8Emulator")
           print(f"Created {archive_name}.zip")
           
@@ -118,7 +187,7 @@ jobs:
 
   release:
     name: Publish release assets
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -131,22 +200,49 @@ jobs:
         with:
           path: release_uploads
 
-      - name: Create or update GitHub Release
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.version.outputs.new_tag }}
+          CHANGELOG: ${{ needs.version.outputs.changelog }}
         run: |
           set -e
-          TAG_NAME="${GITHUB_REF_NAME}"
-          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release create "$TAG_NAME" --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"
-          fi
+          
+          # Create the git tag
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"
+          
+          # Create the release with nice formatting
+          gh release create "$TAG_NAME" \
+            --title "🎮 CHIP-8 Emulator $TAG_NAME" \
+            --notes "## What's New
+
+          $CHANGELOG
+
+          ## Downloads
+
+          | Platform | File |
+          |----------|------|
+          | 🪟 Windows | \`chip8emulator-${TAG_NAME}-windows.zip\` |
+          | 🍎 macOS | \`chip8emulator-${TAG_NAME}-macos.zip\` |
+          | 🐧 Linux | \`chip8emulator-${TAG_NAME}-linux.zip\` |
+
+          ## Installation
+
+          1. Download the archive for your platform
+          2. Extract the zip file
+          3. Run \`chip8-emulator\` (or \`chip8-emulator.exe\` on Windows)
+
+          See [CONTROLS.md](https://github.com/${{ github.repository }}/blob/master/CONTROLS.md) for keyboard mappings."
 
       - name: Upload binaries to Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.version.outputs.new_tag }}
         run: |
           set -e
-          TAG_NAME="${GITHUB_REF_NAME}"
           shopt -s nullglob
           files=(release_uploads/*/*.zip)
           if [ ${#files[@]} -eq 0 ]; then
