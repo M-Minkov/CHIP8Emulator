@@ -212,7 +212,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "$TAG_NAME"
-          git push origin "$TAG_NAME"
+          git push origin "refs/tags/$TAG_NAME"
           
           # Create the release with nice formatting
           gh release create "$TAG_NAME" \
