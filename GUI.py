@@ -22,6 +22,8 @@ KEY_MAPPING = {
     "v": 0xF
 }
 
+ROM_LIBRARY_ROOT = Path("ROMs")
+
 
 class GUI(tk.Frame):
     def __init__(self, chip8, master=None, scale=10, on_rom_loaded=None, on_reset=None):
@@ -34,6 +36,8 @@ class GUI(tk.Frame):
         self.on_reset = on_reset
         self.canvas = None
         self.menu = None
+        self.library_menu = None
+        self.help_menu = None
         self.master.title("Chip-8 Emulator")
         self.pack()
         self.createWidgets()
@@ -53,6 +57,12 @@ class GUI(tk.Frame):
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.quit)
         self.menu.add_cascade(label="File", menu=file_menu)
+        self.library_menu = tk.Menu(self.menu, tearoff=0)
+        self.menu.add_cascade(label="Library", menu=self.library_menu)
+        self.help_menu = tk.Menu(self.menu, tearoff=0)
+        self.help_menu.add_command(label="Chip-8 Controls", command=self.show_controls_help)
+        self.menu.add_cascade(label="Help", menu=self.help_menu)
+        self.refresh_library_menu()
         self.master.config(menu=self.menu)
 
     def openFile(self):
@@ -100,6 +110,90 @@ class GUI(tk.Frame):
     def update_window_title(self, path):
         name = Path(path).name
         self.master.title(f"Chip-8 Emulator - {name}")
+
+    def refresh_library_menu(self):
+        if not self.library_menu:
+            return
+        self.library_menu.delete(0, tk.END)
+        roms = self.discover_rom_library()
+        if not roms:
+            self.library_menu.add_command(label="No bundled ROMs found", state=tk.DISABLED)
+            self.library_menu.add_separator()
+            self.library_menu.add_command(label="Browse...", command=self.openFile)
+            return
+        for category in self.sorted_categories(list(roms.keys())):
+            submenu = tk.Menu(self.library_menu, tearoff=0)
+            for display_name, rom_path in roms[category]:
+                submenu.add_command(label=display_name, command=lambda p=rom_path: self.quick_load_rom(p))
+            self.library_menu.add_cascade(label=category, menu=submenu)
+        self.library_menu.add_separator()
+        self.library_menu.add_command(label="Browse...", command=self.openFile)
+
+    def discover_rom_library(self):
+        if not ROM_LIBRARY_ROOT.exists():
+            return {}
+        roms = {}
+        for path in sorted(ROM_LIBRARY_ROOT.rglob("*.ch8")):
+            if not path.is_file():
+                continue
+            category = self.categorize_rom(path)
+            label = path.stem.replace("_", " ").title()
+            roms.setdefault(category, []).append((label, str(path)))
+        for values in roms.values():
+            values.sort(key=lambda item: item[0].lower())
+        return roms
+
+    def categorize_rom(self, path):
+        try:
+            relative = path.relative_to(ROM_LIBRARY_ROOT)
+            if relative.parts and len(relative.parts) > 1:
+                folder = relative.parts[0].replace("_", " ")
+                return folder.title()
+        except ValueError:
+            pass
+        name = path.stem.lower()
+        if any(keyword in name for keyword in ("demo", "logo", "intro")):
+            return "Demos"
+        if any(keyword in name for keyword in ("test", "opcode", "bench")):
+            return "Other"
+        return "Games"
+
+    def sorted_categories(self, categories):
+        preferred = ["Games", "Demos", "Other"]
+        ordered = [category for category in preferred if category in categories]
+        remaining = sorted({category for category in categories if category not in preferred})
+        return ordered + remaining
+
+    def quick_load_rom(self, path):
+        try:
+            if self.on_rom_loaded:
+                self.on_rom_loaded(path)
+            else:
+                self.chip8.load_rom_from_path(path)
+            self.update_window_title(path)
+        except Exception as exc:
+            tkMessageBox.showerror("ROM Load Failed", str(exc))
+
+    def show_controls_help(self):
+        lines = [
+            "Chip-8 keypad (hex layout):",
+            " 1  2  3  C",
+            " 4  5  6  D",
+            " 7  8  9  E",
+            " A  0  B  F",
+            "",
+            "Mapped to your keyboard:",
+            " 1  2  3  4",
+            " Q  W  E  R",
+            " A  S  D  F",
+            " Z  X  C  V",
+            "",
+            "Most games use 5 as Start/Fire,",
+            " arrow-like movement on 2/4/6/8,",
+            " and 1/4/7 for extra actions."
+        ]
+        message = "\n".join(lines)
+        tkMessageBox.showinfo("Chip-8 Controls", message)
 
     def handle_key_press(self, event):
         key = event.keysym.lower()

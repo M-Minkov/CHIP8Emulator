@@ -8,7 +8,7 @@ Modernized Python implementation of a classic Chip-8 interpreter. The project is
 - Dedicated timing loop that keeps delay and sound timers stepping at 60 Hz
 - Keyboard bridge that maps a standard QWERTY layout onto the Chip-8 hex keypad
 - Canvas-based renderer with dynamic scaling and instant ROM reloads
-- Simple ROM picker with graceful error handling
+- Bundled ROM library menu grouped into Games, Demos, and Other for one-click loading plus a manual file picker
 
 ## Requirements
 
@@ -22,25 +22,21 @@ python application.py
 ```
 
 The app attempts to boot `ROMs/IBM Logo.ch8` automatically. Use `File → Open ROM...` to select any `.ch8` file, or `File → Reload ROM` to reset the currently loaded program.
+Pick any included title directly from `Library → Games|Demos|Other`, or choose `Library → Browse...` to open something outside the repository.
 
 ## Controls
 
-| Chip-8 | Keyboard |
-| --- | --- |
-| 1 2 3 C | 1 2 3 4 |
-| 4 5 6 D | Q W E R |
-| 7 8 9 E | A S D F |
-| A 0 B F | Z X C V |
+See `CONTROLS.md` (or `Help → Chip-8 Controls` in the app) for the full keypad diagram, keyboard mapping, and quick-play tips.
 
 ## Architecture
 
 - `chip8emulator.py`: Pure interpreter that handles memory, opcodes, timers, stack, keypad state, and framebuffer updates.
 - `GUI.py`: Tkinter frame responsible for drawing the 64×32 display, keyboard events, and file menu actions; it never touches CPU internals directly, instead calling the small public API.
-- `main.py`: Thin coordinator that wires `Chip8` and `GUI` together, schedules CPU cycles, and tracks the currently loaded ROM path.
+- `application.py` / `main.py`: Thin coordinators that wire `Chip8` and `GUI` together, schedule CPU cycles, and track the currently loaded ROM path.
 
 ## ROMs
 
-Sample programs live under `ROMs/`. Drop additional `.ch8` files in that folder (or anywhere on disk) and open them via the menu. The emulator keeps the last-loaded ROM in memory so you can reset it instantly without digging through the file dialog again.
+Sample programs live under `ROMs/`. Drop additional `.ch8` files in that folder (or anywhere on disk) and open them via the menu. Files inside `ROMs` automatically appear in the Library menu: place them in subfolders named after categories (for example `ROMs/Games/Breakout.ch8`) or rely on filename keywords (`demo`, `logo`, `test`, `opcode`) to slot into Demos or Other automatically. The emulator keeps the last-loaded ROM in memory so you can reset it instantly without digging through the file dialog again.
 
 ## Troubleshooting
 
