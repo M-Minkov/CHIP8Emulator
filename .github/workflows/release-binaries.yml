@@ -1,12 +1,12 @@
 name: Publish CHIP-8 Binaries
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - "**.md"
-      - ".gitignore"
+  # push:
+  #   branches:
+  #     - master
+  #   paths-ignore:
+  #     - "**.md"
+  #     - ".gitignore"
   workflow_dispatch:
     inputs:
       version_bump:
